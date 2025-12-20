@@ -65,9 +65,9 @@ const ChangePassword = () => {
     return (
         <div className={`min-h-screen flex items-center justify-center p-4 relative overflow-hidden font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}>
             {/* iOS-inspired liquid background */}
-            <div style={{ animationDelay: '0s' }} className={`absolute -top-1/4 -left-1/4 w-96 h-96 rounded-full blur-[120px] opacity-50 animate-pulse ${isDarkMode ? 'bg-violet-600' : 'bg-violet-200'}`} />
-            <div style={{ animationDelay: '2s' }} className={`absolute -bottom-1/4 -right-1/4 w-96 h-96 rounded-full blur-[120px] opacity-50 animate-pulse ${isDarkMode ? 'bg-sky-600' : 'bg-sky-200'}`} />
-            <div style={{ animationDelay: '4s' }} className={`absolute -bottom-1/4 -left-1/3 w-80 h-80 rounded-full blur-[120px] opacity-50 animate-pulse ${isDarkMode ? 'bg-rose-600' : 'bg-rose-200'}`} />
+            <div style={{ animationDelay: '0s' }} className={`absolute -top-1/4 -left-1/4 w-96 h-96 rounded-full blur-[100px] animate-pulse ${isDarkMode ? 'bg-violet-600 opacity-50' : 'bg-violet-300 opacity-75'}`} />
+            <div style={{ animationDelay: '2s' }} className={`absolute -bottom-1/4 -right-1/4 w-96 h-96 rounded-full blur-[100px] animate-pulse ${isDarkMode ? 'bg-sky-600 opacity-50' : 'bg-sky-300 opacity-75'}`} />
+            <div style={{ animationDelay: '4s' }} className={`absolute -bottom-1/4 -left-1/3 w-80 h-80 rounded-full blur-[100px] animate-pulse ${isDarkMode ? 'bg-rose-600 opacity-50' : 'bg-rose-300 opacity-75'}`} />
 
             <Card className={`w-full max-w-md backdrop-blur-2xl shadow-2xl relative z-10 transition-colors duration-300 ${
                 !isDarkMode 
