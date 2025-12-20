@@ -153,7 +153,12 @@ const FacultyDashboard = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-900 dark:text-slate-200 selection:bg-indigo-100 dark:selection:bg-blue-500/30 overflow-hidden transition-colors duration-300">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex font-sans text-slate-900 dark:text-slate-200 selection:bg-indigo-100 dark:selection:bg-blue-500/30 overflow-hidden relative transition-colors duration-300">
+            {/* --- BACKGROUND BLURS --- */}
+            <div style={{ animationDelay: '0s' }} className={`fixed -top-1/4 -left-1/4 w-96 h-96 rounded-full blur-[120px] opacity-30 animate-pulse ${isDarkMode ? 'bg-violet-600' : 'bg-violet-200'}`} />
+            <div style={{ animationDelay: '2s' }} className={`fixed -bottom-1/4 -right-1/4 w-96 h-96 rounded-full blur-[120px] opacity-30 animate-pulse ${isDarkMode ? 'bg-sky-600' : 'bg-sky-200'}`} />
+            <div style={{ animationDelay: '4s' }} className={`fixed -bottom-1/4 -left-1/3 w-80 h-80 rounded-full blur-[120px] opacity-30 animate-pulse ${isDarkMode ? 'bg-rose-600' : 'bg-rose-200'}`} />
+
             {/* --- DESKTOP SIDEBAR --- */}
             <aside className="hidden md:flex fixed top-0 left-0 z-40 h-screen w-64 bg-white dark:bg-slate-900/90 backdrop-blur-xl border-r border-slate-200 dark:border-white/5 flex-col transition-all duration-300 shadow-xl">
                 <div className="p-6 flex items-center gap-4 border-b border-slate-100 dark:border-white/5">
@@ -199,19 +204,19 @@ const FacultyDashboard = () => {
             </aside>
 
             {/* --- NAVBAR (Mobile Only) --- */}
-            <div className="md:hidden fixed bottom-4 left-1/2 transform -translate-x-1/2 w-[95%] max-w-sm z-50 animate-in fade-in duration-500">
-                <div className="bg-white/90 dark:bg-slate-900/90 border-slate-200 dark:border-white/20 backdrop-blur-xl border rounded-2xl shadow-2xl shadow-black/20 flex justify-around items-center p-1 ring-1 ring-black/5">
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg border-slate-200 dark:border-white/10 pb-2">
+                <div className="flex justify-around items-center h-16">
                     {navItems.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
-                            className={`flex flex-col items-center justify-center gap-1 w-20 h-14 rounded-lg transition-all duration-300 ${
+                            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors duration-200 ${
                                 activeTab === item.id 
-                                ? 'bg-blue-500/10 text-blue-500' 
-                                : `text-slate-500 dark:text-slate-400 hover:bg-white/5`
+                                ? 'text-blue-500' 
+                                : 'text-slate-500 dark:text-slate-400'
                             }`}
                         >
-                            <item.icon className="h-5 w-5" />
+                            <item.icon className="h-6 w-6" />
                             <span className="text-[10px] font-medium">
                                 {item.label}
                             </span>

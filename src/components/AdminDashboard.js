@@ -314,19 +314,19 @@ const AdminDashboard = () => {
             </aside>
 
             {/* --- NAVBAR (Mobile Only) --- */}
-            <div className="md:hidden fixed bottom-4 left-1/2 transform -translate-x-1/2 w-[95%] max-w-sm z-50 animate-in slide-in-from-bottom-20 duration-1000 ease-out fill-mode-forwards">
-                <div className="bg-white/90 dark:bg-slate-900/90 border-slate-200/60 dark:border-white/20 backdrop-blur-xl border rounded-2xl shadow-2xl shadow-black/20 flex justify-around items-center p-1 ring-1 ring-black/5">
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg border-slate-200 dark:border-white/10 pb-2">
+                <div className="flex justify-around items-center h-16">
                     {navItems.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
-                            className={`flex flex-col items-center justify-center gap-1 w-16 h-14 rounded-lg transition-all duration-300 ${
+                            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-colors duration-200 ${
                                 activeTab === item.id 
-                                ? 'text-blue-500 -translate-y-1' 
-                                : `text-slate-500 dark:text-slate-400 hover:bg-white/5`
+                                ? 'text-blue-500' 
+                                : 'text-slate-500 dark:text-slate-400'
                             }`}
                         >
-                            <item.icon className="h-5 w-5" />
+                            <item.icon className="h-6 w-6" />
                             <span className="text-[10px] font-medium text-center">
                                 {item.label}
                             </span>
