@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api'; // Import your API helper
 import { useTheme } from './ThemeContext';
-import { 
-    Capacitor
-} from '@capacitor/core';
-import { StatusBar, Style } from '@capacitor/status-bar';
+import { useNetworkStatus } from '../NetworkContext';
+import offlineService from './offlineService';
 import { 
     LayoutDashboard, 
     Users, 
@@ -43,6 +41,7 @@ const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [isLoading, setIsLoading] = useState(true);
     const { isDarkMode, toggleTheme } = useTheme();
+    const { isOnline } = useNetworkStatus();
 
     // State for Real Data
     const [dashboardData, setDashboardData] = useState({
@@ -74,6 +73,7 @@ const AdminDashboard = () => {
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [studentAttendance, setStudentAttendance] = useState([]);
     const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
+    const [attendancePercentage, setAttendancePercentage] = useState(0);
 
     // --- REPORT STATE ---
     const [customStartDate, setCustomStartDate] = useState('');
@@ -116,18 +116,51 @@ const AdminDashboard = () => {
         checkAuth();
     }, [navigate]);
 
-    const fetchDashboardData = async (dept) => {
+    // This effect handles the app coming back online
+    useEffect(() => {
+        if (isOnline && adminDept !== "Loading...") {
+            fetchDashboardData(adminDept, true); // Force refresh when coming online
+        }
+    }, [isOnline, adminDept]);
+
+    const fetchDashboardData = async (dept, bypassCache = false) => {
+        const cacheKey = `dashboard_data_${dept}`;
+
+        // 1. Load from cache if not bypassing
+        if (!bypassCache) {
+            const cachedData = offlineService.getCachedData(cacheKey);
+            if (cachedData) {
+                if (cachedData.stats) setDashboardData(prev => ({ ...prev, stats: cachedData.stats }));
+                if (cachedData.facultyList) setFacultyList(cachedData.facultyList);
+                if (cachedData.courseList) setCourseList(cachedData.courseList);
+                if (cachedData.studentList) setStudentList(cachedData.studentList);
+            }
+        }
+
+        // 2. If offline, stop here
+        if (!isOnline) {
+            setIsLoading(false);
+            return;
+        }
+
+        // 3. Fetch from network
         try {
-            // Using your existing PHP endpoint structure
             const response = await api.get(`/get_dashboard_data.php?dept=${dept}`);
             
             if (response.data.status === 'success') {
                 const data = response.data;
-                if (data.stats) setDashboardData(prev => ({ ...prev, stats: data.stats }));
-                
-                if (data.facultyList && data.facultyList.length > 0) setFacultyList(data.facultyList);
-                if (data.courseList && data.courseList.length > 0) setCourseList(data.courseList);
-                if (data.studentList && data.studentList.length > 0) setStudentList(data.studentList);
+                const dataToCache = {};
+
+                if (data.stats) { setDashboardData(prev => ({ ...prev, stats: data.stats })); dataToCache.stats = data.stats; }
+                if (data.facultyList) { setFacultyList(data.facultyList); dataToCache.facultyList = data.facultyList; }
+                if (data.courseList) { setCourseList(data.courseList); dataToCache.courseList = data.courseList; }
+                if (data.studentList) { setStudentList(data.studentList); dataToCache.studentList = data.studentList; }
+
+                // 4. Update cache with fresh data
+                // Only cache if there's something to cache
+                if (Object.keys(dataToCache).length > 0) {
+                    offlineService.setCachedData(cacheKey, dataToCache);
+                }
             }
         } catch (error) {
             console.error("API Error:", error);
@@ -141,15 +174,22 @@ const AdminDashboard = () => {
         setSelectedStudent(student);
         setIsAttendanceLoading(true);
         setStudentAttendance([]); // Clear previous data
+        setAttendancePercentage(0); // Reset percentage
 
         try {
             // Assuming an endpoint like this exists: get_student_attendance.php
             const response = await api.get(`/get_student_attendance.php?student_id=${student.id}`);
             
             if (response.data && response.data.status === 'success') {
-                // Assuming attendance data is in response.data.attendance
-                // and is an array of objects: { date, course_code, status }
-                setStudentAttendance(response.data.attendance || []);
+                const attendance = response.data.attendance || [];
+                setStudentAttendance(attendance);
+
+                if (attendance.length > 0) {
+                    const presentCount = attendance.filter(att => att.status === 'Present').length;
+                    const totalRecords = attendance.length;
+                    const percentage = (presentCount / totalRecords) * 100;
+                    setAttendancePercentage(percentage);
+                }
             } else {
                 console.error("Failed to fetch attendance:", response.data.message);
             }
@@ -163,7 +203,7 @@ const AdminDashboard = () => {
     const handleRefresh = async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
-        await fetchDashboardData(adminDept);
+        await fetchDashboardData(adminDept, true); // Pass true to bypass cache
         setIsRefreshing(false);
     };
 
@@ -689,12 +729,24 @@ const AdminDashboard = () => {
                 {selectedStudent && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
                         <Card className="w-full max-w-2xl mx-4 bg-white dark:bg-slate-900 animate-in zoom-in-95 shadow-2xl rounded-2xl border border-slate-200 dark:border-white/10">
-                            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 dark:border-white/10 p-4">
+                            <CardHeader className="flex flex-row items-start justify-between border-b border-slate-200 dark:border-white/10 p-4">
                                 <div>
                                     <CardTitle className="text-lg text-slate-800 dark:text-white">Attendance for {selectedStudent.name}</CardTitle>
                                     <CardDescription>Roll No: {selectedStudent.id}</CardDescription>
+                                    {!isAttendanceLoading && studentAttendance.length > 0 && (
+                                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/10">
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">Overall Attendance</p>
+                                            <p className={`text-3xl font-bold ${
+                                                attendancePercentage >= 75 ? 'text-emerald-500' :
+                                                attendancePercentage >= 50 ? 'text-amber-500' :
+                                                'text-red-500'
+                                            }`}>
+                                                {attendancePercentage.toFixed(1)}%
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
-                                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8" onClick={() => setSelectedStudent(null)}>
+                                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 flex-shrink-0" onClick={() => setSelectedStudent(null)}>
                                     <X className="h-5 w-5 text-slate-500 dark:text-slate-400" />
                                 </Button>
                             </CardHeader>

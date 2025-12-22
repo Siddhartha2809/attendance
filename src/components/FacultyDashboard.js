@@ -78,18 +78,35 @@ const FacultyDashboard = () => {
         checkAuth();
     }, [navigate]);
 
+    // --- DATA SYNC LOGIC ---
+    // This effect handles the app coming back online
+    useEffect(() => {
+        const handleOnline = async () => {
+            console.log("Network status: Online. Starting sync process.");
+            // 1. Sync any pending offline submissions
+            await processSyncQueue();
+            
+            // 2. Refetch all relevant data from the server to get the latest updates
+            if (facultyDetails.id) {
+                console.log("Re-fetching data after sync...");
+                await fetchMyCourses(facultyDetails.id, true); // Pass true to bypass cache
+                await fetchHistory(facultyDetails.id, true);   // Pass true to bypass cache
+            }
+        };
+
+        if (isOnline && facultyDetails.id) {
+            handleOnline();
+        }
+    }, [isOnline, facultyDetails.id]);
+
     const handleRefresh = async () => {
         if (isRefreshing) return;
         setIsRefreshing(true);
+        
+        // A refresh should always bypass the cache to get the latest data
+        await fetchMyCourses(facultyDetails.id, true);
+        await fetchHistory(facultyDetails.id, true);
 
-        // Refetch data based on the active tab
-        if (activeTab === 'courses') {
-            await fetchMyCourses(facultyDetails.id);
-        } else if (activeTab === 'history') {
-            // Pass true to bypass cache for a manual refresh
-            await fetchHistory(facultyDetails.id, true);
-        }
-        // No data to fetch for 'profile' tab
         setIsRefreshing(false);
     };
 
@@ -160,19 +177,15 @@ const FacultyDashboard = () => {
         }
     };
 
-    // `isOnline` comes from NetworkContext (single source of truth)
-
+    // This effect just updates the UI with queue stats
     useEffect(() => {
-        if (isOnline) processSyncQueue();
-
-        // Update queue stats periodically for UI refresh
         const statsInterval = setInterval(() => {
             const stats = offlineService.getQueueStats();
             setQueueStats(stats);
         }, 1000); // Update every second
 
         return () => clearInterval(statsInterval);
-    }, [isOnline, facultyDetails.id]); // Rerun when online status changes or user is identified
+    }, []); // No dependencies needed, it should run continuously
 
     useEffect(() => {
         if (activeTab === 'history' && facultyDetails.id) {
@@ -180,12 +193,14 @@ const FacultyDashboard = () => {
         }
     }, [activeTab, facultyDetails.id]);
 
-    const fetchMyCourses = async (fid) => {
+    const fetchMyCourses = async (fid, bypassCache = false) => {
         setLoading(true);
-        // 1. Load from cache immediately for instant UI
-        const cachedCourses = offlineService.getCachedData(`courses_${fid}`);
-        if (cachedCourses) {
-            setMyCourses(cachedCourses);
+        // 1. Load from cache immediately for instant UI, unless bypassed
+        if (!bypassCache) {
+            const cachedCourses = offlineService.getCachedData(`courses_${fid}`);
+            if (cachedCourses) {
+                setMyCourses(cachedCourses);
+            }
         }
 
         // 2. If offline, we can't fetch. Stop here.
@@ -212,7 +227,7 @@ const FacultyDashboard = () => {
 
     const fetchHistory = async (fid, bypassCache = false) => {
         // 1. Load from cache unless bypassed
-        if (!bypassCache) {
+        if (!bypassCache) { // Only use cache if not forcing a refresh
             const cachedHistory = offlineService.getCachedData(`history_${fid}`);
             if (cachedHistory) {
                 setAttendanceHistory(cachedHistory);
