@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ThemeProvider, useTheme } from './components/ThemeContext'; // Corrected path
+import { NetworkProvider } from './NetworkContext';
 import Login from './components/Login'; 
 import LandingPage from './components/LandingPage'; 
 import ChangePassword from './components/ChangePassword'; 
 import AdminDashboard from './components/AdminDashboard'; 
 import FacultyDashboard from './components/FacultyDashboard'; 
 import TakeAttendance from './components/TakeAttendance'; 
+import NetworkStatusIndicator from './NetworkStatusIndicator';
 
 // --- Internal Splash Screen Component ---
 const SplashScreen = ({ onFinish }) => {
@@ -57,6 +59,7 @@ function AppContent() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: 'easeInOut' }}
         >
+          <NetworkStatusIndicator />
           <Routes location={location}>
             {/* Routes without the main layout (e.g., Login) */}
             <Route path="/login" element={<Login />} />
@@ -80,9 +83,11 @@ function AppContent() {
 function App() {
   return (
     <ThemeProvider>
-      <Router>
-        <AppContent />
-      </Router>
+      <NetworkProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </NetworkProvider>
     </ThemeProvider>
   );
 }

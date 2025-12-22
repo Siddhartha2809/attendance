@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNetworkStatus } from '../NetworkContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api';
+import offlineService from './offlineService';
 import { useTheme } from './ThemeContext';
 import { 
     ArrowLeft, 
@@ -12,7 +14,8 @@ import {
     Sun,
     Moon,
     User,
-    Users
+    Users,
+    RefreshCw
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -30,7 +33,9 @@ const TakeAttendance = () => {
     const [runtimeError, setRuntimeError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const { isOnline } = useNetworkStatus();
     const { isDarkMode, toggleTheme } = useTheme();
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     useEffect(() => {
         if (!course) {
@@ -70,34 +75,68 @@ const TakeAttendance = () => {
         };
     }, []);
 
+    // Network status provided by NetworkContext (no local listeners needed)
+
+    const handleRefresh = async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        await fetchStudents();
+        setIsRefreshing(false);
+    };
+
     const fetchStudents = async () => {
+        setLoading(true);
+        const cacheKey = `students_${course.course_code}_${course.year}_${course.sem}_${course.section || 'A'}`;
+
+        // 1. Load from cache for instant UI
+        const cachedStudents = offlineService.getCachedData(cacheKey);
+        if (cachedStudents) {
+            setStudents(cachedStudents);
+            const initialAttendance = {};
+            cachedStudents.forEach(s => {
+                initialAttendance[s.rollno] = 'Present';
+            });
+            setAttendance(initialAttendance);
+        }
+
+        // 2. If offline, stop here. The cached data is all we can show.
+        if (!isOnline) {
+            setLoading(false);
+            if (!cachedStudents) {
+                setRuntimeError("You are offline and this class list hasn't been cached. Please connect to the internet to load it for the first time.");
+            }
+            return;
+        }
+
+        // 3. Fetch from network
         try {
-            // Using API helper
-            // Changed endpoint to get_class_students.php as requested
             const response = await api.get(`/get_class_students.php?dept=${course.department || course.branch}&year=${course.year}&sem=${course.sem}&sec=${course.section || ''}`);
             
             if (response.data.status === 'success') {
-                // Map API response (id, name) to state structure if needed, or use as is.
-                // API returns: { id: "...", name: "..." }
-                // State uses: id (rollno), name (student_name)
                 const mappedStudents = response.data.students.map(s => ({
-                    rollno: s.id,       // Map API 'id' to 'rollno'
-                    student_name: s.name // Map API 'name' to 'student_name'
+                    rollno: s.id,
+                    student_name: s.name
                 }));
 
                 setStudents(mappedStudents);
-                
+
                 const initialAttendance = {};
                 mappedStudents.forEach(s => {
                     initialAttendance[s.rollno] = 'Present';
                 });
                 setAttendance(initialAttendance);
+
+                // 4. Update cache with fresh data
+                offlineService.setCachedData(cacheKey, mappedStudents);
             } else {
                 console.error("Failed to load students:", response.data.message);
-                setStudents([]); 
+                if (!cachedStudents) setStudents([]); // Only clear if no cache
             }
         } catch (error) {
             console.error("Error fetching students:", error);
+            if (!cachedStudents) {
+                setRuntimeError("Failed to fetch student list. Please check your connection and try again.");
+            }
         } finally {
             setLoading(false);
         }
@@ -174,25 +213,99 @@ const TakeAttendance = () => {
             console.log('Submitting attendance payload:', payload);
 
             let response;
+            
             try {
                 response = await api.post('/save_attendance.php', payload);
                 console.log('Submit response:', response);
+                
+                if (response?.data?.status === 'success' || response?.data?.status === 'partial') {
+                    // Handle locked records if present (partial success)
+                    if (response?.data?.status === 'partial' && response?.data?.locked_records) {
+                        const lockedStudents = Object.keys(response.data.locked_records);
+                        const totalLocked = lockedStudents.length;
+                        const processed = response.data.processed_count || 0;
+                        
+                        alert(
+                            `✅ Submitted Successfully!\n\n` +
+                            `📊 ${processed} records saved\n` +
+                            `⏱️ ${totalLocked} record${totalLocked > 1 ? 's' : ''} temporarily locked\n\n` +
+                            `(Locked records can be updated within 15 minutes of original submission)`
+                        );
+                        console.warn('Locked records:', response.data.locked_records);
+                    } else {
+                        alert('Attendance submitted successfully!');
+                    }
+                    
+                    navigate('/faculty-dashboard');
+                } else {
+                    console.error('Submit returned non-success:', response?.data);
+                    setRuntimeError(JSON.stringify(response?.data || response, null, 2));
+                    alert('Error: ' + (response?.data?.message || 'Unknown server error.'));
+                }
             } catch (err) {
                 console.error('API request failed:', err);
-                const serverPayload = err?.response?.data || err?.response || err;
-                setRuntimeError(typeof serverPayload === 'string' ? serverPayload : JSON.stringify(serverPayload, null, 2));
-                alert('Failed to submit attendance. Network or server error. See overlay for details.');
+                
+                // ========================================
+                // INTELLIGENT ERROR HANDLING
+                // ========================================
+                
+                // Check if this is a network error vs server error
+                const isNetworkError = !err.response || 
+                                      err.message?.includes('Network') || 
+                                      err.code === 'ERR_NETWORK' ||
+                                      err.code === 'ECONNABORTED';
+                
+                const isServerError = err.response?.status >= 400;
+                const statusCode = err.response?.status;
+                
+                if (!isOnline || isNetworkError) {
+                    // ========================================
+                    // NETWORK ERROR: Queue for offline sync
+                    // ========================================
+                    console.warn('🔴 Network error detected. Queuing attendance for later sync...');
+                    
+                    try {
+                        // Queue the attendance submission
+                        const queueId = offlineService.addToSyncQueue({
+                            endpoint: '/save_attendance.php',
+                            payload: payload,
+                            type: 'attendance_submission',
+                            courseCode: course.course_code,
+                            submissionDate: date
+                        });
+                        
+                        alert(
+                            '📴 You are offline!\n\n' +
+                            'Your attendance has been saved locally and will be submitted automatically when you reconnect.\n\n' +
+                            `Queue ID: ${queueId.substring(0, 8)}...`
+                        );
+                        
+                        console.log('✅ Attendance queued successfully:', queueId);
+                        navigate('/faculty-dashboard');
+                    } catch (queueErr) {
+                        console.error('Failed to queue attendance:', queueErr);
+                        setRuntimeError('Failed to save offline. Please try again.');
+                    }
+                } else if (isServerError) {
+                    // ========================================
+                    // SERVER ERROR: Show error, don't queue
+                    // ========================================
+                    const errorMsg = err.response?.data?.message || `Server Error (${statusCode})`;
+                    
+                    console.error(`Server returned ${statusCode}: ${errorMsg}`);
+                    setRuntimeError(JSON.stringify(err.response?.data || err.response, null, 2));
+                    alert(`❌ Submission Failed:\n\n${errorMsg}\n\nPlease check your data and try again.`);
+                } else {
+                    // ========================================
+                    // UNKNOWN ERROR: Show error message
+                    // ========================================
+                    const serverPayload = err?.response?.data || err?.response || err;
+                    setRuntimeError(typeof serverPayload === 'string' ? serverPayload : JSON.stringify(serverPayload, null, 2));
+                    alert('Failed to submit attendance. Network or server error. See overlay for details.');
+                }
+                
                 setSubmitting(false);
                 return;
-            }
-
-            if (response?.data?.status === 'success') {
-                alert('Attendance submitted successfully!');
-                navigate('/faculty-dashboard');
-            } else {
-                console.error('Submit returned non-success:', response?.data);
-                setRuntimeError(JSON.stringify(response?.data || response, null, 2));
-                alert('Error: ' + (response?.data?.message || 'Unknown server error.'));
             }
         } catch (error) {
             console.error('Submission error:', error);
@@ -262,6 +375,14 @@ const TakeAttendance = () => {
                                 className="bg-transparent border-none text-sm focus:outline-none text-slate-800 dark:text-white w-[110px]"
                             />
                         </div>
+                        <button
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            title="Refresh Page"
+                            className="p-2 rounded-full transition-all duration-300 border shadow-sm bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        </button>
                         <button 
                             onClick={toggleTheme}
                             className="p-2 rounded-full transition-all duration-300 border shadow-sm bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-600 dark:text-yellow-400 hover:bg-slate-50 dark:hover:bg-white/20"

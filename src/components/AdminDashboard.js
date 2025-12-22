@@ -18,18 +18,15 @@ import {
     Settings,
     Menu,  
     X,
-    UserPlus, 
     FileText, 
     Download, 
     Filter,
     Loader2,
     Sun,
     Moon,
-    CheckCircle,
-    XCircle,
-    Trash2,
     Calendar,
-    List
+    List,
+    RefreshCw
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -70,20 +67,14 @@ const AdminDashboard = () => {
         { id: '23CS02', name: 'Bob Smith', year: '1', dept: 'CSE' }
     ]); 
     const [allocationList, setAllocationList] = useState([]); 
+    const [openStudentMenu, setOpenStudentMenu] = useState(null);
     const [searchTerm, setSearchTerm] = useState(''); 
 
-    // --- ALLOCATION FORM STATE ---
-    const [selectedFaculty, setSelectedFaculty] = useState('');
-    const [selectedCourse, setSelectedCourse] = useState('');
-    const [allocating, setAllocating] = useState(false);
-    const [allocationFeedback, setAllocationFeedback] = useState({ type: '', message: '' });
+    // NEW: Student Attendance Overlay State
+    const [selectedStudent, setSelectedStudent] = useState(null);
+    const [studentAttendance, setStudentAttendance] = useState([]);
+    const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
 
-    // --- CONFIRMATION DIALOG STATE ---
-    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    
     // --- REPORT STATE ---
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -95,6 +86,7 @@ const AdminDashboard = () => {
     const [dailyReportSection, setDailyReportSection] = useState('');
     
     const [generatingReport, setGeneratingReport] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Fetch Data on Component Mount
     useEffect(() => {
@@ -136,8 +128,6 @@ const AdminDashboard = () => {
                 if (data.facultyList && data.facultyList.length > 0) setFacultyList(data.facultyList);
                 if (data.courseList && data.courseList.length > 0) setCourseList(data.courseList);
                 if (data.studentList && data.studentList.length > 0) setStudentList(data.studentList);
-                
-                if (data.allocationList) setAllocationList(data.allocationList);
             }
         } catch (error) {
             console.error("API Error:", error);
@@ -146,56 +136,35 @@ const AdminDashboard = () => {
         }
     };
 
-    const clearFeedback = () => {
-        setAllocationFeedback({ type: '', message: '' });
-    };
-
-    // --- ALLOCATION & DELETION HANDLERS ---
-
-    const handleAllocate = async () => {
-        if (!selectedFaculty || !selectedCourse) {
-            alert("Please select both a Faculty member and a Course.");
-            return;
-        }
-
-        setAllocating(true);
-        clearFeedback();
-
-        const facObj = facultyList.find(f => f.id === selectedFaculty);
-        const courseObj = courseList.find(c => c.code === selectedCourse);
-
-        const payload = {
-            faculty_id: facObj.id,
-            faculty_name: facObj.name,
-            course_code: courseObj.code,
-            course_name: courseObj.name,
-            department: adminDept,
-            year: courseObj.year,
-            sem: courseObj.sem
-        };
+    const handleViewAttendance = async (student) => {
+        setOpenStudentMenu(null); // Close the dropdown menu
+        setSelectedStudent(student);
+        setIsAttendanceLoading(true);
+        setStudentAttendance([]); // Clear previous data
 
         try {
-            const response = await api.post('/save_allocation.php', payload);
+            // Assuming an endpoint like this exists: get_student_attendance.php
+            const response = await api.get(`/get_student_attendance.php?student_id=${student.id}`);
             
-            if (response.data.status === 'success') {
-                setAllocationFeedback({ type: 'success', message: response.data.message });
-                fetchDashboardData(adminDept); // Refresh list
-                setSelectedFaculty('');
-                setSelectedCourse('');
+            if (response.data && response.data.status === 'success') {
+                // Assuming attendance data is in response.data.attendance
+                // and is an array of objects: { date, course_code, status }
+                setStudentAttendance(response.data.attendance || []);
             } else {
-                setAllocationFeedback({ type: 'error', message: response.data.message });
+                console.error("Failed to fetch attendance:", response.data.message);
             }
         } catch (error) {
-            setAllocationFeedback({ type: 'error', message: 'Network Error: Could not save allocation.' });
+            console.error("API Error fetching attendance:", error);
         } finally {
-            setAllocating(false);
-            setTimeout(clearFeedback, 5000); // Clear feedback after 5 seconds
+            setIsAttendanceLoading(false);
         }
     };
 
-    const openDeleteConfirmation = (allocation) => {
-        setItemToDelete(allocation);
-        setIsConfirmOpen(true);
+    const handleRefresh = async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        await fetchDashboardData(adminDept);
+        setIsRefreshing(false);
     };
 
     const handleGenerateReport = async (type) => {
@@ -208,7 +177,7 @@ const AdminDashboard = () => {
                 return;
             }
             // Use generate_custom_report.php
-            url = `http://192.168.1.4/attendance_api/generate_custom_report.php?dept=${adminDept}`;
+            url = `${process.env.REACT_APP_API_BASE_URL}/generate_custom_report.php?dept=${adminDept}`;
             url += `&start=${customStartDate}&end=${customEndDate}`;
             
             if (reportYear) url += `&year=${reportYear}`;
@@ -216,7 +185,7 @@ const AdminDashboard = () => {
             
         } else if (type === 'Daily') {
             // Use generate_report.php for Daily
-            url = `http://192.168.1.4/attendance_api/generate_report.php?type=${type}&dept=${adminDept}`;
+            url = `${process.env.REACT_APP_API_BASE_URL}/generate_report.php?type=${type}&dept=${adminDept}`;
             
             if (dailyReportYear) url += `&year=${dailyReportYear}`;
             if (dailyReportSection) url += `&sec=${dailyReportSection}`;
@@ -259,7 +228,6 @@ const AdminDashboard = () => {
         { id: 'faculty', label: 'Faculty', icon: Users },
         { id: 'students', label: 'Students', icon: GraduationCap },
         { id: 'courses', label: 'Courses', icon: BookOpen },
-        { id: 'allocation', label: 'Allocations', icon: UserPlus },
         { id: 'reports', label: 'Reports', icon: FileText },
     ];
 
@@ -336,31 +304,35 @@ const AdminDashboard = () => {
             </div>
 
             {/* --- MAIN CONTENT --- */}
-            <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-y-auto h-screen relative w-full pb-32 md:pb-8">
+            <main className="flex-1 md:ml-64 h-screen relative w-full flex flex-col">
                 {/* Mobile Header */}
-                <div className="md:hidden flex items-center justify-between mb-6 pt-8">
-                    <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-blue-50 dark:bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm border border-slate-200 dark:border-white/10 shadow-sm">
-                            <img src="/logo-small.png" alt="Logo" className="h-8 w-auto object-contain" />
+                <div className="w-full sticky top-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-200 dark:border-white/10">
+                    <div className="md:hidden flex items-center justify-between p-4 pt-8">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 bg-blue-50 dark:bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm border border-slate-200 dark:border-white/10 shadow-sm">
+                                <img src="/logo-small.png" alt="Logo" className="h-8 w-auto object-contain" />
+                            </div>
+                            <div>
+                                <span className="font-bold text-slate-800 dark:text-white text-lg block leading-tight">MIC Admin</span>
+                                <span className="text-xs text-blue-600 dark:text-blue-400 uppercase tracking-widest font-semibold">{adminDept}</span>
+                            </div>
                         </div>
-                        <div>
-                            <span className="font-bold text-slate-800 dark:text-white text-lg block leading-tight">MIC Admin</span>
-                            <span className="text-xs text-blue-600 dark:text-blue-400 uppercase tracking-widest font-semibold">{adminDept}</span>
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
+                        <div className="flex gap-2">
+                        <button onClick={handleRefresh} disabled={isRefreshing} title="Refresh Page" className="p-2 rounded-full transition-colors border bg-white dark:bg-white/10 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        </button>
                         <button onClick={toggleTheme} className="p-2 rounded-full transition-colors border bg-white dark:bg-white/10 border-slate-200 dark:border-white/10 text-slate-600 dark:text-yellow-400 shadow-sm">
                             {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                         </button>
                         <button onClick={handleLogout} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors border border-red-100 shadow-sm">
                             <LogOut className="h-5 w-5" />
                         </button>
+                        </div>
                     </div>
-                </div>
 
-                {/* Desktop Header */}
-                <header className="hidden md:flex justify-between items-center mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
-                    <div>
+                    {/* Desktop Header */}
+                    <header className="hidden md:flex justify-between items-center p-8 animate-in fade-in slide-in-from-top-4 duration-700">
+                        <div>
                         <h1 className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
                             {activeTab === 'overview' && `${adminDept} Dashboard`}
                             {activeTab !== 'overview' && activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
@@ -368,45 +340,32 @@ const AdminDashboard = () => {
                         <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
                             Managing data for <strong>{adminDept}</strong> Department.
                         </p>
-                    </div>
-                    <button 
-                        onClick={toggleTheme}
-                        className="p-3 rounded-full transition-all duration-300 border shadow-sm bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-600 dark:text-yellow-400 hover:bg-slate-50 dark:hover:bg-white/20"
-                    >
-                        {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                    </button>
-                </header>
+                        </div>
+                        <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleRefresh}
+                            disabled={isRefreshing}
+                            title="Refresh Page"
+                            className="p-3 rounded-full transition-all duration-300 border shadow-sm bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button 
+                            onClick={toggleTheme}
+                            className="p-3 rounded-full transition-all duration-300 border shadow-sm bg-white dark:bg-white/10 border-slate-200 dark:border-white/20 text-slate-600 dark:text-yellow-400 hover:bg-slate-50 dark:hover:bg-white/20"
+                        >
+                            {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                        </button>
+                        </div>
+                    </header>
+                </div>
 
-                {/* --- CONTENT VIEWS --- */}
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8">
+                    {/* --- CONTENT VIEWS --- */}
 
-                {/* --- CONFIRMATION DIALOG --- */}
-                {isConfirmOpen && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-300">
-                        <Card className="w-full max-w-md bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 shadow-2xl">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-slate-800 dark:text-white">
-                                    <Trash2 className="h-5 w-5 text-red-500"/> Confirm Deletion
-                                </CardTitle>
-                                <CardDescription className="text-slate-500 dark:text-slate-400">
-                                    Are you sure you want to delete this allocation? This action cannot be undone.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 p-4 rounded-lg border border-slate-200 dark:border-white/10 mx-6">
-                                <p><strong className="text-slate-800 dark:text-white">{itemToDelete?.CourseName}</strong></p>
-                                <p className="text-slate-500 dark:text-slate-400">Allocated to: {itemToDelete?.FacultyName}</p>
-                            </CardContent>
-                            <div className="p-6 flex justify-end gap-4">
-                                <Button variant="ghost" className="hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white" onClick={() => setIsConfirmOpen(false)}>
-                                    Cancel
-                                </Button>
-                            </div>
-                        </Card>
-                    </div>
-                )}
-
-                {/* 1. OVERVIEW */}
-                {activeTab === 'overview' && (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
+                    {/* 1. OVERVIEW */}
+                    {activeTab === 'overview' && (
+                        <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                             {stats.map((stat, index) => (
                                 <Card key={index} className="bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 backdrop-blur-md hover:translate-y-[-2px] transition-transform">
@@ -445,12 +404,12 @@ const AdminDashboard = () => {
                                 </div>
                             </CardContent>
                         </Card>
-                    </div>
-                )}
+                        </div>
+                    )}
 
-                {/* 2. FACULTY MANAGEMENT */}
-                {activeTab === 'faculty' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
+                    {/* 2. FACULTY MANAGEMENT */}
+                    {activeTab === 'faculty' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
                          <div className="flex flex-col md:flex-row justify-between gap-4">
                             <div className="relative w-full md:w-72">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400" />
@@ -476,12 +435,12 @@ const AdminDashboard = () => {
                             ])}
                             emptyMessage="No faculty found."
                         />
-                    </div>
-                )}
+                        </div>
+                    )}
 
-                {/* 3. STUDENTS MANAGEMENT (RESTORED) */}
-                {activeTab === 'students' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
+                    {/* 3. STUDENTS MANAGEMENT (RESTORED) */}
+                    {activeTab === 'students' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
                          <div className="flex flex-col md:flex-row justify-between gap-4">
                             <div className="relative w-full md:w-72">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400" />
@@ -491,9 +450,6 @@ const AdminDashboard = () => {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
-                            <Button className="bg-blue-600 hover:bg-blue-500 text-white gap-2 w-full md:w-auto">
-                                <Plus className="h-4 w-4" /> Add Student
-                            </Button>
                         </div>
 
                         <DataTable 
@@ -504,16 +460,40 @@ const AdminDashboard = () => {
                                 <span className="font-medium text-slate-800 dark:text-white">{s.name}</span>,
                                 s.year + " Year",
                                 s.dept,
-                                <Button variant="ghost" size="icon" className="hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+                                <div className="relative">
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-white h-8 w-8"
+                                        onClick={() => setOpenStudentMenu(openStudentMenu === s.id ? null : s.id)}
+                                    >
+                                        <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                    {openStudentMenu === s.id && (
+                                        <div 
+                                            className="absolute right-0 z-10 mt-1 w-40 origin-top-right rounded-md bg-white dark:bg-slate-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+                                            onMouseLeave={() => setOpenStudentMenu(null)}
+                                        >
+                                            <div className="py-1">
+                                                <button 
+                                                    className="text-slate-700 dark:text-slate-300 block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+                                                    onClick={() => handleViewAttendance(s)}
+                                                >
+                                                    View Attendance
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             ])}
                             emptyMessage="No students found."
                         />
-                    </div>
-                )}
+                        </div>
+                    )}
 
-                {/* 4. COURSES MANAGEMENT (RESTORED) */}
-                {activeTab === 'courses' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
+                    {/* 4. COURSES MANAGEMENT (RESTORED) */}
+                    {activeTab === 'courses' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
                          <div className="flex flex-col md:flex-row justify-between gap-4">
                             <div className="relative w-full md:w-72">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400" />
@@ -540,95 +520,12 @@ const AdminDashboard = () => {
                             ])}
                             emptyMessage="No courses found."
                         />
-                    </div>
-                )}
-
-                {/* 5. FACULTY ALLOCATION */}
-                {activeTab === 'allocation' && (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
-                        {/* Allocation Form */}
-                        <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-6">
-                            <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><UserPlus className="h-5 w-5 text-blue-400"/> New Allocation</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div>
-                                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Select Faculty</label>
-                                    <select 
-                                        className="w-full bg-white dark:bg-white/10 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none border dark:border-white/10"
-                                        value={selectedFaculty}
-                                        onChange={(e) => setSelectedFaculty(e.target.value)}
-                                    >
-                                        <option value="" className={isDarkMode ? "text-black" : "text-slate-900"}>-- Choose Faculty --</option>
-                                        {facultyList.map(f => <option key={f.id} value={f.id} className={isDarkMode ? "text-black" : "text-slate-900"}>{f.name} ({f.id})</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Select Course</label>
-                                    <select 
-                                        className="w-full bg-white dark:bg-white/10 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none border dark:border-white/10"
-                                        value={selectedCourse}
-                                        onChange={(e) => setSelectedCourse(e.target.value)}
-                                    >
-                                        <option value="" className={isDarkMode ? "text-black" : "text-slate-900"}>-- Choose Course --</option>
-                                        {courseList.map(c => <option key={c.code} value={c.code} className={isDarkMode ? "text-black" : "text-slate-900"}>{c.code} - {c.name}</option>)}
-                                    </select>
-                                </div>
-                                <Button 
-                                    onClick={handleAllocate} 
-                                    disabled={allocating}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white w-full"
-                                >
-                                    {allocating ? "Saving..." : "Allocate Course"}
-                                </Button>
-                            </div>
-                            {/* --- ALLOCATION FEEDBACK --- */}
-                            {allocationFeedback.message && (
-                                <div className={`mt-4 p-3 rounded-lg text-sm flex items-center gap-3 border animate-in fade-in-5 slide-in-from-bottom-2 duration-500 ${
-                                    allocationFeedback.type === 'success' 
-                                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' 
-                                    : 'bg-red-500/10 text-red-300 border-red-500/20'
-                                }`}>
-                                    {allocationFeedback.type === 'success' 
-                                        ? <CheckCircle className="h-5 w-5" /> 
-                                        : <XCircle className="h-5 w-5" />
-                                    }
-                                    <span>{allocationFeedback.message}</span>
-                                </div>
-                            )}
                         </div>
+                    )}
 
-                        {/* Allocation List */}
-                        <div>
-                            <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4">Current Allocations</h3>
-                            <DataTable 
-                                isDarkMode={isDarkMode}
-                                headers={['Course', 'Faculty', 'Code', 'Actions']}
-                                rows={allocationList.map(alloc => [
-                                    <span className="font-medium text-slate-800 dark:text-white">{alloc.CourseName}</span>,
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-6 w-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">
-                                            {alloc.FacultyName ? alloc.FacultyName.charAt(0) : "?"}
-                                        </div>
-                                        <span className="text-slate-900 dark:text-slate-200">{alloc.FacultyName || <span className="text-red-400">Unassigned</span>}</span>
-                                    </div>,
-                                    <span className="px-2 py-1 rounded-md text-xs border bg-slate-100 dark:bg-white/10 border-slate-200 dark:border-white/10 text-slate-700 dark:text-white">{alloc.CourseCode}</span>,
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="text-red-500/70 hover:bg-red-500/10 hover:text-red-500 h-8 w-8"
-                                        onClick={() => openDeleteConfirmation(alloc)}
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                ])}
-                                emptyMessage="No allocations found."
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {/* 6. REPORTS (Updated to Daily & Custom) */}
-                {activeTab === 'reports' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
+                    {/* 6. REPORTS (Updated to Daily & Custom) */}
+                    {activeTab === 'reports' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-medium text-slate-800 dark:text-white">Attendance Reports</h3>
                         </div>
@@ -784,6 +681,50 @@ const AdminDashboard = () => {
                                 </CardContent>
                             </Card>
                         </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* --- STUDENT ATTENDANCE OVERLAY --- */}
+                {selectedStudent && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
+                        <Card className="w-full max-w-2xl mx-4 bg-white dark:bg-slate-900 animate-in zoom-in-95 shadow-2xl rounded-2xl border border-slate-200 dark:border-white/10">
+                            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 dark:border-white/10 p-4">
+                                <div>
+                                    <CardTitle className="text-lg text-slate-800 dark:text-white">Attendance for {selectedStudent.name}</CardTitle>
+                                    <CardDescription>Roll No: {selectedStudent.id}</CardDescription>
+                                </div>
+                                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8" onClick={() => setSelectedStudent(null)}>
+                                    <X className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                                </Button>
+                            </CardHeader>
+                            <CardContent className="p-0 max-h-[60vh] overflow-y-auto">
+                                {isAttendanceLoading ? (
+                                    <div className="flex justify-center items-center p-16">
+                                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                                    </div>
+                                ) : studentAttendance.length > 0 ? (
+                                    <DataTable 
+                                        headers={['Date', 'Course Code', 'Status']}
+                                        rows={studentAttendance.map(att => [
+                                            att.date,
+                                            <span className="font-mono text-purple-400">{att.course_code}</span>,
+                                            <span className={`font-semibold ${att.status === 'Present' ? 'text-emerald-500' : 'text-red-500'}`}>{att.status}</span>
+                                        ])}
+                                        isDarkMode={isDarkMode}
+                                        emptyMessage="No attendance records found."
+                                    />
+                                ) : (
+                                    <div className="text-center p-16 text-slate-500 dark:text-slate-400">
+                                        <div className="mx-auto h-12 w-12 text-slate-400">
+                                            <List />
+                                        </div>
+                                        <p className="mt-4 font-medium text-slate-700 dark:text-slate-300">No Records Found</p>
+                                        <p className="mt-1 text-sm">No attendance records are available for this student.</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
                     </div>
                 )}
 

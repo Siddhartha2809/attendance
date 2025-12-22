@@ -1,13 +1,7 @@
 import axios from 'axios';
 
-// const baseURL = 'http://localhost/attendance-api';
-
-// ✅ GOOD (Phone looks across Wi-Fi to your PC)
-// Replace '172.16.10.XX' with your actual IP from Step 1
-const baseURL = 'http://172.16.10.171/attendance_api'; 
-
 const api = axios.create({
-    baseURL: baseURL,
+    baseURL: process.env.REACT_APP_API_BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     }
