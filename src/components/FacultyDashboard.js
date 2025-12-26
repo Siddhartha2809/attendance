@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNetworkStatus } from '../NetworkContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../api'; // Use consistent API helper
@@ -39,10 +39,75 @@ const FacultyDashboard = () => {
     const [attendanceHistory, setAttendanceHistory] = useState([]); // History Data
     const [loading, setLoading] = useState(true);
     const [courseSearchTerm, setCourseSearchTerm] = useState('');
+    const [historySearchTerm, setHistorySearchTerm] = useState('');
     const { isOnline } = useNetworkStatus();
     const [authChecking, setAuthChecking] = useState(true);
     const [queueStats, setQueueStats] = useState({ total: 0, pending: 0, failed: 0, synced: 0 }); 
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [now, setNow] = useState(() => new Date());
+
+    useEffect(() => {
+        // This timer will update the 'now' state every 30 seconds,
+        const intervalId = setInterval(() => {
+            setNow(new Date());
+        }, 30000); // Update every 30 seconds is sufficient
+
+        return () => clearInterval(intervalId);
+    }, []);
+
+    const filteredHistory = useMemo(() => {
+        if (!historySearchTerm) {
+            return attendanceHistory;
+        }
+        return attendanceHistory.filter(log => 
+            log.course_code.toLowerCase().includes(historySearchTerm.toLowerCase())
+        );
+    }, [attendanceHistory, historySearchTerm]);
+
+    const groupedHistory = useMemo(() => {
+        if (filteredHistory.length === 0) return {};
+
+        const grouped = filteredHistory.reduce((acc, log) => {
+            try {
+                // The date string from the server is now in the correct local timezone.
+                const logDate = new Date(log.date);
+
+                if (isNaN(logDate.getTime())) {
+                    throw new Error(`Invalid date format: ${log.date}`);
+                }
+
+                const dateKey = logDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+
+                if (!acc[dateKey]) {
+                    acc[dateKey] = [];
+                }
+                acc[dateKey].push(log);
+            } catch (e) {
+                const dateKey = 'Unknown Date';
+                if (!acc[dateKey]) acc[dateKey] = [];
+                acc[dateKey].push(log);
+            }
+            return acc;
+        }, {});
+
+        for (const date in grouped) {
+            grouped[date].sort((a, b) => new Date(b.date) - new Date(a.date));
+        }
+
+        return grouped;
+    }, [filteredHistory]);
+
+    const sortedHistoryDates = useMemo(() => {
+        return Object.keys(groupedHistory).sort((a, b) => {
+            if (a === 'Unknown Date') return 1;
+            if (b === 'Unknown Date') return -1;
+            return new Date(b) - new Date(a);
+        });
+    }, [groupedHistory]);
 
     // --- CHECK AUTH & FETCH DATA ---
     useEffect(() => {
@@ -67,6 +132,7 @@ const FacultyDashboard = () => {
                 
                 // Initial Fetch
                 await fetchMyCourses(userObj.id);
+                await fetchHistory(userObj.id);
 
             } catch (e) {
                 console.error("Auth Error", e);
@@ -465,7 +531,21 @@ const FacultyDashboard = () => {
 
                                     <div className="space-y-4">
                                     {filteredCourses.length > 0 ? (
-                                        filteredCourses.map((course) => (
+                                        filteredCourses.map((course) => {
+                                            // Find the most recent log for this specific course to check for a grace period
+                                            const latestLog = attendanceHistory
+                                                .filter(log => log.course_code === course.course_code)
+                                                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+                                            let minutesSinceSubmission = Infinity;
+                                            if (latestLog) {
+                                                minutesSinceSubmission = (now.getTime() - new Date(latestLog.date).getTime()) / (1000 * 60);
+                                            }
+
+                                            const isWithinGracePeriod = minutesSinceSubmission < 15;
+                                            const remainingMinutes = isWithinGracePeriod ? Math.max(0, Math.ceil(15 - minutesSinceSubmission)) : 0;
+                                            
+                                            return (
                                             <div 
                                                 key={course.id} 
                                                 className="bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all duration-300 shadow-sm hover:shadow-md group"
@@ -490,17 +570,27 @@ const FacultyDashboard = () => {
                                                             <span className="w-1 h-1 rounded-full bg-slate-400"></span>
                                                             <span>Sem: {course.sem}</span>
                                                         </p>
+                                                        {/* GRACE PERIOD INDICATOR */}
+                                                        {isWithinGracePeriod && (
+                                                            <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
+                                                                <Clock className="h-4 w-4 flex-shrink-0" />
+                                                                <span>
+                                                                    You can update this for ~{remainingMinutes} more minute{remainingMinutes !== 1 ? 's' : ''}. After that, it will be locked for today.
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 
                                                 <Button 
                                                     className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white gap-2 shadow-lg shadow-indigo-500/20 min-w-[160px]"
                                                     onClick={() => handleTakeAttendance(course)}
+                                                    variant={isWithinGracePeriod ? 'secondary' : 'default'}
                                                 >
-                                                    Take Attendance <ChevronRight className="h-4 w-4" />
+                                                    {isWithinGracePeriod ? 'Update Attendance' : 'Take Attendance'} <ChevronRight className="h-4 w-4" />
                                                 </Button>
                                             </div>
-                                        ))
+                                        )})
                                     ) : (
                                         // Conditional empty state
                                         myCourses.length > 0 ? (
@@ -563,42 +653,70 @@ const FacultyDashboard = () => {
                                     )}
 
                                     <Card className="bg-white dark:bg-white/5 border-slate-200 dark:border-white/10">
-                                        <CardHeader>
+                                        <CardHeader className="flex flex-row items-center justify-between">
                                             <CardTitle className="text-slate-800 dark:text-white">Recent Logs</CardTitle>
+                                            <div className="relative w-full max-w-xs">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-slate-400" />
+                                                <Input
+                                                    placeholder="Filter by course code..."
+                                                    className="pl-10 w-full bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10"
+                                                    value={historySearchTerm}
+                                                    onChange={(e) => setHistorySearchTerm(e.target.value)}
+                                                />
+                                            </div>
                                         </CardHeader>
                                         <CardContent>
-                                            {attendanceHistory.length > 0 ? (
+                                            {sortedHistoryDates.length > 0 ? (
                                                 <div className="overflow-x-auto">
                                                     <table className="w-full text-left text-sm text-slate-500 dark:text-slate-400">
-                                                        <thead className="text-xs uppercase font-semibold text-slate-900 dark:text-slate-200 border-b border-slate-200 dark:border-white/10">
+                                                        <thead className="text-xs uppercase font-semibold text-slate-900 dark:text-slate-200 bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10">
                                                             <tr>
-                                                                <th className="p-4">Date</th>
+                                                                <th className="p-4">Time</th>
                                                                 <th className="p-4">Course</th>
                                                                 <th className="p-4 text-center">Present</th>
                                                                 <th className="p-4 text-center">Total</th>
                                                                 <th className="p-4 text-right">Status</th>
                                                             </tr>
                                                         </thead>
-                                                        <tbody className="divide-y border-slate-200 dark:border-white/10">
-                                                            {attendanceHistory.map((log, index) => (
-                                                                <tr key={index} className="hover:bg-slate-50 dark:hover:bg-white/5">
-                                                                    <td className="p-4 text-slate-800 dark:text-white">{log.date}</td>
-                                                                    <td className="p-4">{log.course_code}</td>
-                                                                    <td className="p-4 text-center text-emerald-500 font-bold">{log.present_count}</td>
-                                                                    <td className="p-4 text-center">{log.total_students}</td>
-                                                                    <td className="p-4 text-right">
-                                                                        <span className="bg-emerald-500/10 text-emerald-500 text-xs px-2 py-1 rounded border border-emerald-500/20">Submitted</span>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
+                                                        {sortedHistoryDates.map(date => (
+                                                            <React.Fragment key={date}>
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td colSpan="5" className="p-3 font-bold text-sm bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-b border-t border-slate-200 dark:border-white/10">
+                                                                            {date}
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                                <tbody className="divide-y divide-slate-200 dark:divide-white/10">
+                                                                    {groupedHistory[date].map((log, index) => (
+                                                                        <tr key={`${log.date}-${index}`} className="hover:bg-slate-50 dark:hover:bg-white/5">
+                                                                            <td className="p-4 text-slate-800 dark:text-white font-mono text-xs">{new Date(log.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</td>
+                                                                            <td className="p-4">{log.course_code}</td>
+                                                                            <td className="p-4 text-center text-emerald-500 font-bold">{log.present_count}</td>
+                                                                            <td className="p-4 text-center">{log.total_students}</td>
+                                                                            <td className="p-4 text-right">
+                                                                                <span className="bg-emerald-500/10 text-emerald-500 text-xs px-2 py-1 rounded border border-emerald-500/20">Submitted</span>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </React.Fragment>
+                                                        ))}
                                                     </table>
                                                 </div>
                                             ) : (
-                                                <div className="p-8 text-center text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-white/10 rounded-lg">
-                                                    <Clock className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                                                    <p>No recent attendance records found.</p>
-                                                </div>
+                                                attendanceHistory.length > 0 ? (
+                                                    <div className="p-8 text-center text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-white/10 rounded-lg">
+                                                        <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                                                        <h3 className="font-medium text-slate-700 dark:text-slate-300">No Logs Found</h3>
+                                                        <p>Your search for "{historySearchTerm}" did not match any logs.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-8 text-center text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-white/10 rounded-lg">
+                                                        <Clock className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                                                        <p>No recent attendance records found.</p>
+                                                    </div>
+                                                )
                                             )}
                                         </CardContent>
                                     </Card>
