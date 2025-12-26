@@ -2,6 +2,7 @@
   "name": "attendance-app",
   "version": "0.1.0",
   "private": true,
+  "//proxy": "https://mic-attendance.byethost7.com",
   "dependencies": {
     "@capacitor-community/sqlite": "^7.0.2",
     "@capacitor/android": "^8.0.0",
@@ -53,5 +54,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5"
   }
 }
