@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api'; // Import your API helper
+import api from '../api';
 import { useTheme } from './ThemeContext';
 import { useNetworkStatus } from '../NetworkContext';
 import offlineService from './offlineService';
@@ -53,25 +53,16 @@ const AdminDashboard = () => {
     const [adminDept, setAdminDept] = useState("Loading...");
     
     // Initialize with Dummy Data for immediate visualization
-    const [facultyList, setFacultyList] = useState([
-        { id: 'FAC001', name: 'Dr. Sarah Smith', dept: 'CSE', email: 'sarah@mic.edu' },
-        { id: 'FAC002', name: 'Prof. John Doe', dept: 'CSE', email: 'john@mic.edu' }
-    ]);
-    const [courseList, setCourseList] = useState([
-        { code: 'CS101', name: 'Intro to Programming', year: '1', sem: '1' },
-        { code: 'CS201', name: 'Data Structures', year: '2', sem: '3' }
-    ]); 
-    const [studentList, setStudentList] = useState([
-        { id: '23CS01', name: 'Alice Johnson', year: '1', dept: 'CSE' },
-        { id: '23CS02', name: 'Bob Smith', year: '1', dept: 'CSE' }
-    ]); 
+    const [facultyList, setFacultyList] = useState([]);
+    const [courseList, setCourseList] = useState([]); 
+    const [studentList, setStudentList] = useState([]); 
     const [allocationList, setAllocationList] = useState([]); 
     const [openStudentMenu, setOpenStudentMenu] = useState(null);
     const [searchTerm, setSearchTerm] = useState(''); 
 
     // NEW: Student Attendance Overlay State
     const [selectedStudent, setSelectedStudent] = useState(null);
-    const [studentAttendance, setStudentAttendance] = useState([]);
+    const [studentAttendanceSummary, setStudentAttendanceSummary] = useState(null);
     const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
     const [attendancePercentage, setAttendancePercentage] = useState(0);
 
@@ -173,28 +164,28 @@ const AdminDashboard = () => {
         setOpenStudentMenu(null); // Close the dropdown menu
         setSelectedStudent(student);
         setIsAttendanceLoading(true);
-        setStudentAttendance([]); // Clear previous data
+        setStudentAttendanceSummary(null); // Clear previous data
         setAttendancePercentage(0); // Reset percentage
 
         try {
-            // Assuming an endpoint like this exists: get_student_attendance.php
-            const response = await api.get(`/get_student_attendance.php?student_id=${student.id}`);
+            // Use the correct endpoint from the user's request
+            const response = await api.get(`/get_attendance_history.php?student_id=${student.id}`);
             
             if (response.data && response.data.status === 'success') {
-                const attendance = response.data.attendance || [];
-                setStudentAttendance(attendance);
+                const summary = response.data.summary;
+                setStudentAttendanceSummary(summary);
 
-                if (attendance.length > 0) {
-                    const presentCount = attendance.filter(att => att.status === 'Present').length;
-                    const totalRecords = attendance.length;
-                    const percentage = (presentCount / totalRecords) * 100;
+                if (summary && summary.college_working_days > 0) {
+                    const percentage = (summary.student_present_days / summary.college_working_days) * 100;
                     setAttendancePercentage(percentage);
                 }
             } else {
-                console.error("Failed to fetch attendance:", response.data.message);
+                console.error("Failed to fetch attendance summary:", response.data.message);
+                setStudentAttendanceSummary({ error: response.data.message || "Failed to load data." });
             }
         } catch (error) {
-            console.error("API Error fetching attendance:", error);
+            console.error("API Error fetching attendance summary:", error);
+            setStudentAttendanceSummary({ error: "An API error occurred." });
         } finally {
             setIsAttendanceLoading(false);
         }
@@ -406,44 +397,33 @@ const AdminDashboard = () => {
                     {/* 1. OVERVIEW */}
                     {activeTab === 'overview' && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700 ease-out">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                            {stats.map((stat, index) => (
-                                <Card key={index} className="bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 backdrop-blur-md hover:translate-y-[-2px] transition-transform">
-                                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                        <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                            {stat.title}
-                                        </CardTitle>
-                                        <div className={`p-2 rounded-lg ${stat.bg}`}>
-                                            <stat.icon className={`h-5 w-5 ${stat.color}`} />
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="text-3xl font-bold text-slate-800 dark:text-white">{stat.value}</div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Current Academic Year</p>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
+                            {/* Welcome Card */}
+                            <Card className="bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 backdrop-blur-md">
+                                <CardHeader>
+                                    <CardTitle className="text-2xl font-bold text-slate-800 dark:text-white">Welcome back!</CardTitle>
+                                    <CardDescription>Here's a quick overview of the {adminDept} department.</CardDescription>
+                                </CardHeader>
+                            </Card>
 
-                        {/* Recent Activity */}
-                        <Card className="bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 backdrop-blur-md">
-                            <CardHeader>
-                                <CardTitle className="text-slate-800 dark:text-white">Recent Department Activity</CardTitle>
-                            </CardHeader>
-                            <CardContent className="text-sm text-slate-500 dark:text-slate-400">
-                                <div className="space-y-4">
-                                    {[1, 2, 3].map((i) => (
-                                        <div key={i} className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-4 last:border-0 last:pb-0">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                                                <span>System check performed</span>
+                            {/* Stats Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {stats.map((stat, index) => (
+                                    <Card key={index} className="bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 backdrop-blur-md hover:translate-y-[-2px] transition-transform">
+                                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                            <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                                {stat.title}
+                                            </CardTitle>
+                                            <div className={`p-2 rounded-lg ${stat.bg}`}>
+                                                <stat.icon className={`h-5 w-5 ${stat.color}`} />
                                             </div>
-                                            <span className="text-xs opacity-70">Just now</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <div className="text-3xl font-bold text-slate-800 dark:text-white">{stat.value}</div>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Current Academic Year</p>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -728,15 +708,26 @@ const AdminDashboard = () => {
                 {/* --- STUDENT ATTENDANCE OVERLAY --- */}
                 {selectedStudent && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-                        <Card className="w-full max-w-2xl mx-4 bg-white dark:bg-slate-900 animate-in zoom-in-95 shadow-2xl rounded-2xl border border-slate-200 dark:border-white/10">
+                        <Card className="w-full max-w-md mx-4 bg-white dark:bg-slate-900 animate-in zoom-in-95 shadow-2xl rounded-2xl border border-slate-200 dark:border-white/10">
                             <CardHeader className="flex flex-row items-start justify-between border-b border-slate-200 dark:border-white/10 p-4">
                                 <div>
-                                    <CardTitle className="text-lg text-slate-800 dark:text-white">Attendance for {selectedStudent.name}</CardTitle>
-                                    <CardDescription>Roll No: {selectedStudent.id}</CardDescription>
-                                    {!isAttendanceLoading && studentAttendance.length > 0 && (
-                                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/10">
+                                    <CardTitle className="text-lg text-slate-800 dark:text-white">Attendance Summary</CardTitle>
+                                    <CardDescription>{selectedStudent.name} ({selectedStudent.id})</CardDescription>
+                                </div>
+                                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 flex-shrink-0" onClick={() => setSelectedStudent(null)}>
+                                    <X className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                                </Button>
+                            </CardHeader>
+                            <CardContent className="p-6">
+                                {isAttendanceLoading ? (
+                                    <div className="flex justify-center items-center p-16">
+                                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                                    </div>
+                                ) : studentAttendanceSummary && !studentAttendanceSummary.error ? (
+                                    <div className="space-y-4">
+                                        <div className="text-center">
                                             <p className="text-xs text-slate-500 dark:text-slate-400">Overall Attendance</p>
-                                            <p className={`text-3xl font-bold ${
+                                            <p className={`text-5xl font-bold ${
                                                 attendancePercentage >= 75 ? 'text-emerald-500' :
                                                 attendancePercentage >= 50 ? 'text-amber-500' :
                                                 'text-red-500'
@@ -744,35 +735,24 @@ const AdminDashboard = () => {
                                                 {attendancePercentage.toFixed(1)}%
                                             </p>
                                         </div>
-                                    )}
-                                </div>
-                                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 flex-shrink-0" onClick={() => setSelectedStudent(null)}>
-                                    <X className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-                                </Button>
-                            </CardHeader>
-                            <CardContent className="p-0 max-h-[60vh] overflow-y-auto">
-                                {isAttendanceLoading ? (
-                                    <div className="flex justify-center items-center p-16">
-                                        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-white/10">
+                                            <div className="text-center p-4 rounded-lg bg-slate-50 dark:bg-white/5">
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">Present Days</p>
+                                                <p className="text-2xl font-bold text-emerald-500">{studentAttendanceSummary.student_present_days}</p>
+                                            </div>
+                                            <div className="text-center p-4 rounded-lg bg-slate-50 dark:bg-white/5">
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">Total Working Days</p>
+                                                <p className="text-2xl font-bold text-slate-700 dark:text-white">{studentAttendanceSummary.college_working_days}</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                ) : studentAttendance.length > 0 ? (
-                                    <DataTable 
-                                        headers={['Date', 'Course Code', 'Status']}
-                                        rows={studentAttendance.map(att => [
-                                            att.date,
-                                            <span className="font-mono text-purple-400">{att.course_code}</span>,
-                                            <span className={`font-semibold ${att.status === 'Present' ? 'text-emerald-500' : 'text-red-500'}`}>{att.status}</span>
-                                        ])}
-                                        isDarkMode={isDarkMode}
-                                        emptyMessage="No attendance records found."
-                                    />
                                 ) : (
                                     <div className="text-center p-16 text-slate-500 dark:text-slate-400">
                                         <div className="mx-auto h-12 w-12 text-slate-400">
                                             <List />
                                         </div>
                                         <p className="mt-4 font-medium text-slate-700 dark:text-slate-300">No Records Found</p>
-                                        <p className="mt-1 text-sm">No attendance records are available for this student.</p>
+                                        <p className="mt-1 text-sm">{studentAttendanceSummary?.error || "No attendance records are available for this student."}</p>
                                     </div>
                                 )}
                             </CardContent>
