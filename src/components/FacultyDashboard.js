@@ -21,11 +21,12 @@ import {
     List,
     ChevronRight,
     RefreshCw,
-    Search
+    Search,
+    KeyRound
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from './ui/card';
 
 const FacultyDashboard = () => {
     const navigate = useNavigate();
@@ -763,6 +764,16 @@ const FacultyDashboard = () => {
                                                 </div>
                                             </div>
                                         </CardContent>
+                                        <CardFooter className="pt-6 mt-4 border-t border-slate-200 dark:border-white/10">
+                                            <Button 
+                                                variant="outline" 
+                                                className="w-full gap-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white" 
+                                                onClick={() => navigate('/change-password')}
+                                            >
+                                                <KeyRound className="h-4 w-4" />
+                                                Change Password
+                                            </Button>
+                                        </CardFooter>
                                     </Card>
                                 </div>
                             )}
