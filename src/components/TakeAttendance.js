@@ -497,7 +497,7 @@ const TakeAttendance = () => {
             </div>
 
             {/* Bottom Floating Action Bar */}
-            <div className="fixed bottom-0 left-0 right-0 z-40">
+            <div className="fixed left-0 right-0 z-40" style={{ bottom: 'env(safe-area-inset-bottom)' }}>
                 <div className="max-w-5xl mx-auto p-4">
                     <div className="bg-white/50 dark:bg-black/30 backdrop-blur-2xl border border-slate-900/10 dark:border-white/10 rounded-2xl p-3 flex justify-between items-center shadow-2xl shadow-black/20">
                         <div className="text-sm text-neutral-500 dark:text-neutral-400 hidden sm:block">

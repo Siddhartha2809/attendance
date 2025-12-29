@@ -311,7 +311,7 @@ const AdminDashboard = () => {
             </aside>
 
             {/* --- NAVBAR (Mobile Only) --- */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg border-slate-200 dark:border-white/10 pb-2">
+            <div className="md:hidden fixed left-0 right-0 z-40 border-t bg-white/80 dark:bg-slate-950/80 backdrop-blur-lg border-slate-200 dark:border-white/10 pb-1" style={{ bottom: 'env(safe-area-inset-bottom)' }}>
                 <div className="flex justify-around items-center h-16">
                     {navItems.map((item) => (
                         <button
@@ -333,10 +333,10 @@ const AdminDashboard = () => {
             </div>
 
             {/* --- MAIN CONTENT --- */}
-            <main className="flex-1 md:ml-64 h-screen relative w-full flex flex-col">
+            <main className="flex-1 md:ml-64 h-screen relative w-full flex flex-col pb-14 md:pb-0">
                 {/* Mobile Header */}
                 <div className="w-full sticky top-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-200 dark:border-white/10">
-                    <div className="md:hidden flex items-center justify-between p-4 pt-8">
+                    <div className="md:hidden flex items-center justify-between p-4 pt-4">
                         <div className="flex items-center gap-3">
                             <div className="h-10 w-10 bg-blue-50 dark:bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm border border-slate-200 dark:border-white/10 shadow-sm">
                                 <img src="/logo-small.png" alt="Logo" className="h-8 w-auto object-contain" />
@@ -360,7 +360,7 @@ const AdminDashboard = () => {
                     </div>
 
                     {/* Desktop Header */}
-                    <header className="hidden md:flex justify-between items-center p-8 animate-in fade-in slide-in-from-top-4 duration-700">
+                    <header className="hidden md:flex justify-between items-center p-4 animate-in fade-in slide-in-from-top-4 duration-700">
                         <div>
                         <h1 className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
                             {activeTab === 'overview' && `${adminDept} Dashboard`}
