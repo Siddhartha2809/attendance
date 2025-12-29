@@ -1,0 +1,16 @@
+{
+	"appId": "com.mic.attendance",
+	"appName": "MIC Track",
+	"webDir": "build",
+	"server": {
+		"androidScheme": "http",
+		"cleartext": true,
+		"allowNavigation": [
+			"192.168.1.4"
+		]
+	},
+	"packageClassList": [
+		"CapacitorSQLitePlugin",
+		"StatusBarPlugin"
+	]
+}

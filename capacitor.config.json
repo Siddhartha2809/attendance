@@ -1,0 +1,17 @@
+{
+  "appId": "com.mic.attendance",
+  "appName": "AttendanceApp",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true,
+    "allowNavigation": [
+      "192.168.1.4"
+    ]
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlay": true
+    }
+  }
+}
